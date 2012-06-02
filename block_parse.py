@@ -40,6 +40,7 @@ class WikiDumpHandler(xml.sax.ContentHandler):
         self.db = db 
         self.parse = parse
         self.query = query
+        self.answer = None
         
     def startElement(self, name, attrs):
         if name == 'title':
@@ -59,55 +60,32 @@ class WikiDumpHandler(xml.sax.ContentHandler):
     def endElement(self, name):
         if name == 'title':
             self.title_flag = False
-        if name == 'text':
-            self.text_flag = False
             title = to_ascii(''.join(self.title))
-            txt = to_ascii(''.join(self.text))
-
-            if title is None or txt is None:
-                txt = ' '
-
+            self.title = title
             if self.parse == 'all':
+                print title, self.f_name
                 self.db[title] = self.f_name
                 if self.n % 1000 == 0:
                     print 'Adding article', self.n
-            else:
-                if title == self.query:
+
+        if name == 'text':
+            self.text_flag = False
+            txt = to_ascii(''.join(self.text))
+
+            if txt is None:
+                txt = ' '
+            
+            if self.parse == 'query':
+                if self.title == self.query:
                     self.answer = txt
             
             self.n += 1
 
-    
-def query(query, db):
-
-    try:
-        fn = os.path.join('split', db[query])
-    except KeyError:
-        return None
-    
-    dump = ''.join(bz2.BZ2File(fn).readlines())
-
-    parser = xml.sax.make_parser()
-    sax_handler = WikiDumpHandler(articles_db, 'query', query)
-    parser.setContentHandler(sax_handler)
-    parser.feed(xml_header)
-    parser.feed(dump[dump.index('<page>'):])
-    
-    return sax_handler.answer
-
-if __name__ == '__main__':
-    fn_db = 'articles_block'
-    articles_db = dbm.open(fn_db, 'r')
-    txt = query('A', articles_db)
-    print txt
-
-
-if __name__ == '__main__x':
+def make_db():
     fn_db = 'articles_block'
     articles_db = dbm.open(fn_db, 'n')
 
     split_dir = 'split'
-    
     blocks = ((f, bz2.BZ2File(os.path.join(split_dir, f))) 
               for f in sorted(os.listdir(split_dir)))
 
@@ -120,4 +98,49 @@ if __name__ == '__main__x':
 
     print '%d articles added to %s' % (len(articles_db), fn_db)
     articles_db.close()
+    
+def query(query, db):
+
+    try:
+        block = db[query]
+    except KeyError:
+        return None
+
+    parser = xml.sax.make_parser()
+    sax_handler = WikiDumpHandler(articles_db, 'query', query)
+    parser.setContentHandler(sax_handler)
+    parser.feed(xml_header)
+
+    n = 0
+    while n < 3:
+        fn = os.path.join('split', block)
+        dump = ''.join(bz2.BZ2File(fn).readlines())
+
+        if n == 0:
+            parser.feed(dump[dump.index('<page>'):])
+        else:
+            parser.feed(dump)
+            
+        if sax_handler.answer:
+            return sax_handler.answer
+        n += 1
+
+        block = block[:3] + ('%05d' % (int(block[3:8]) + 1)) + block[8:]
+        
+        
+
+if __name__ == '__main__':
+    fn_db = 'articles_block'
+    articles_db = dbm.open(fn_db, 'r')
+
+    #print query('April', articles_db)
+    
+    txt = query('Ethnic group', articles_db)
+    txt = query('Microsoft', articles_db)
+    print txt
+
+if __name__ == '__main__x':
+    make_db()
+
+
 
