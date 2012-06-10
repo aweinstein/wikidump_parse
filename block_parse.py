@@ -27,8 +27,14 @@ def to_ascii(s):
     return s_ascii
 
 
+NAMESPACES = ('Wikipedia:', 'File:', 'MediaWiki:', 'Template:', 'Help:',
+              'Category:', 'Portal:', 'Book:', 'List of')
+
+def is_namespace(title):
+    return any(title.startswith(ns) for ns in NAMESPACES)
+
 class WikiDumpHandler(xml.sax.ContentHandler):
-    def __init__(self, db, parse='all', query=False):
+    def __init__(self, db, parse='all', query=False, f=None):
         '''
         parse: 'all' parse all the articles
                'query'  
@@ -41,7 +47,9 @@ class WikiDumpHandler(xml.sax.ContentHandler):
         self.parse = parse
         self.query = query
         self.answer = None
-        
+        self.f = f
+        self.rejected = ['foo']
+
     def startElement(self, name, attrs):
         if name == 'title':
             self.title_flag = True
@@ -62,11 +70,6 @@ class WikiDumpHandler(xml.sax.ContentHandler):
             self.title_flag = False
             title = to_ascii(''.join(self.title))
             self.title = title
-            if self.parse == 'all':
-                print title, self.f_name
-                self.db[title] = self.f_name
-                if self.n % 1000 == 0:
-                    print 'Adding article', self.n
 
         if name == 'text':
             self.text_flag = False
@@ -74,12 +77,26 @@ class WikiDumpHandler(xml.sax.ContentHandler):
 
             if txt is None:
                 txt = ' '
-            
+
+            if self.parse == 'all' and not is_namespace(self.title) \
+                and txt.count('#REDIRECT') == 0 \
+                and txt.count('#redirect') == 0 \
+                and self.title.count('(disambiguation)') == 0:
+                #try:
+                self.db[self.title] = self.f_name[3:8]
+                #except dbm.error:
+                #    print 'Error adding %s -> %s' % (self.title, self.f_name)
+                #    self.rejected.append(self.title)
+                self.f.write('%s, %s\n' % (self.title, self.f_name[3:8]))
+                if self.n % 1000 == 0:
+                    print 'Adding article', self.n
+
             if self.parse == 'query':
                 if self.title == self.query:
                     self.answer = txt
             
             self.n += 1
+
 
 def make_db():
     fn_db = 'articles_block'
@@ -87,18 +104,25 @@ def make_db():
 
     split_dir = 'split'
     blocks = ((f, bz2.BZ2File(os.path.join(split_dir, f))) 
-              for f in sorted(os.listdir(split_dir)))
+              for f in sorted(os.listdir(split_dir))[:1000])
 
+    f = open('list.txt', 'w')
     parser = xml.sax.make_parser()
-    sax_handler = WikiDumpHandler(articles_db)
+    sax_handler = WikiDumpHandler(articles_db, f=f)
     parser.setContentHandler(sax_handler)
     for f_name, block in blocks:
         sax_handler.f_name = f_name
         parser.feed(''.join(block.readlines()))
-
+    f.close()
     print '%d articles added to %s' % (len(articles_db), fn_db)
     articles_db.close()
     
+    f = open('rejected.txt','w')
+    f.write('\n'.join(sax_handler.rejected))
+    print 'Rejected:'
+    print sax_handler.rejected
+    f.close()
+
 def query(query, db):
 
     try:
@@ -129,7 +153,7 @@ def query(query, db):
         
         
 
-if __name__ == '__main__':
+if __name__ == '__main__x':
     fn_db = 'articles_block'
     articles_db = dbm.open(fn_db, 'r')
 
@@ -139,7 +163,7 @@ if __name__ == '__main__':
     txt = query('Microsoft', articles_db)
     print txt
 
-if __name__ == '__main__x':
+if __name__ == '__main__':
     make_db()
 
 
