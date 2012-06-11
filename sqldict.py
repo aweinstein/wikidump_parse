@@ -28,6 +28,7 @@ class SQLDict(DictMixin):
         self.conn = db_connector
 
     def __getitem__(self, item):
+        self.conn.commit()
         c = self.conn.cursor()
         c.execute("select value from keyvalues where key=?", (item,))
         value = c.fetchone()
@@ -40,7 +41,7 @@ class SQLDict(DictMixin):
     def __setitem__(self, item, value):
         c = self.conn.cursor()
         c.execute("insert into keyvalues values (?,?)", (item, value))
-        self.conn.commit()
+        #self.conn.commit()
         c.close()
         
     def __delitem__(self, item):
@@ -50,6 +51,7 @@ class SQLDict(DictMixin):
         c.close()
         
     def keys(self):
+        self.conn.commit()
         c = self.conn.cursor()
         c.execute('select key from keyvalues')
         keys = c.fetchall()
